@@ -41,9 +41,9 @@ async function getVideoInfo(videoUrl) {
             .filter(format => format.url && (format.vcodec !== 'none' || format.acodec !== 'none'))
             .map(format => ({
                 itag: format.format_id,
-                quality: format.quality || 
-                        (format.height ? format.height + 'p' : 
-                         format.width ? format.width + 'x' + format.height : 'unknown'),
+                quality: format.quality ||
+                    (format.height ? format.height + 'p' :
+                        format.width ? format.width + 'x' + format.height : 'unknown'),
                 container: format.ext,
                 hasVideo: format.vcodec !== 'none',
                 hasAudio: format.acodec !== 'none',
@@ -51,7 +51,7 @@ async function getVideoInfo(videoUrl) {
                 audioCodec: format.acodec,
                 bitrate: format.tbr || format.abr || 0,
                 filesize: format.filesize,
-                filesizeFormatted: format.filesize ? 
+                filesizeFormatted: format.filesize ?
                     (format.filesize / (1024 * 1024)).toFixed(2) + ' MB' : 'Unknown',
                 approxDurationMs: format.duration ? format.duration * 1000 : 0,
                 fps: format.fps,
@@ -117,44 +117,44 @@ app.get("/api/video/download", async (req, res) => {
         }
 
         url = decodeURIComponent(url);
-        
+
         // If it's a YouTube URL, get the direct download URL first
         if (url.includes('youtube.com') || url.includes('youtu.be')) {
             try {
                 // Get video info to find direct URL
                 const videoInfo = await getVideoInfo(url);
-                
+
                 // If quality specified, find that format
                 let selectedFormat;
                 if (quality) {
-                    selectedFormat = videoInfo.formats.find(f => 
+                    selectedFormat = videoInfo.formats.find(f =>
                         f.itag === quality || f.quality === quality
                     );
                 }
-                
+
                 // If no specific quality or not found, use the first available format
                 if (!selectedFormat) {
                     // Try to find a good format with both video and audio
-                    selectedFormat = videoInfo.formats.find(f => f.hasVideo && f.hasAudio) || 
-                                    videoInfo.formats[0];
+                    selectedFormat = videoInfo.formats.find(f => f.hasVideo && f.hasAudio) ||
+                        videoInfo.formats[0];
                 }
-                
+
                 if (!selectedFormat || !selectedFormat.url) {
                     return res.status(404).json({ error: "No downloadable format found" });
                 }
-                
+
                 // Use the direct URL from YouTube
                 url = selectedFormat.url;
-                
+
                 // Set filename if not provided
                 if (!filename) {
                     const ext = selectedFormat.container || 'mp4';
                     filename = sanitizeFilename(videoInfo.title) + '.' + ext;
                 }
-                
+
                 console.log(`Downloading: ${videoInfo.title} (${selectedFormat.quality})`);
                 console.log(`Direct URL: ${url.substring(0, 100)}...`);
-                
+
             } catch (error) {
                 console.error('Error getting video info:', error);
                 return res.status(500).json({ error: "Failed to get video information" });
@@ -170,7 +170,7 @@ app.get("/api/video/download", async (req, res) => {
         // Force download instead of open/play
         res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`);
         res.setHeader("Content-Type", "application/octet-stream");
-        
+
         // Add cache control headers
         res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         res.setHeader("Pragma", "no-cache");
@@ -197,7 +197,7 @@ app.get("/api/video/download", async (req, res) => {
             }
         }, (response) => {
             console.log(`Response status: ${response.statusCode}`);
-            
+
             if (response.statusCode >= 400) {
                 console.error(`YouTube rejected request: ${response.statusCode}`);
                 return res.status(500).send("YouTube rejected the download request");
@@ -223,7 +223,7 @@ app.get("/api/video/download", async (req, res) => {
                     const percent = (downloadedBytes / totalBytes * 100).toFixed(1);
                     const elapsed = (Date.now() - startTime) / 1000;
                     const speed = downloadedBytes / elapsed / (1024 * 1024); // MB/s
-                    
+
                     // Log progress every 5%
                     if (percent % 5 === 0) {
                         console.log(`Download: ${percent}% (${speed.toFixed(2)} MB/s)`);
