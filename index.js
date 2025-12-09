@@ -16,8 +16,6 @@ app.use(express.urlencoded({ extended: true }));
 const activeDownloads = new Map();
 
 // Helper function to get video info
-
-
 async function getVideoInfo(videoUrl) {
     try {
         console.log("Processing URL:", videoUrl);
@@ -41,9 +39,9 @@ async function getVideoInfo(videoUrl) {
             .filter(format => format.url && (format.vcodec !== 'none' || format.acodec !== 'none'))
             .map(format => ({
                 itag: format.format_id,
-                quality: format.quality || 
-                        (format.height ? format.height + 'p' : 
-                         format.width ? format.width + 'x' + format.height : 'unknown'),
+                quality: format.quality ||
+                    (format.height ? format.height + 'p' :
+                        format.width ? format.width + 'x' + format.height : 'unknown'),
                 container: format.ext,
                 hasVideo: format.vcodec !== 'none',
                 hasAudio: format.acodec !== 'none',
@@ -51,7 +49,7 @@ async function getVideoInfo(videoUrl) {
                 audioCodec: format.acodec,
                 bitrate: format.tbr || format.abr || 0,
                 filesize: format.filesize,
-                filesizeFormatted: format.filesize ? 
+                filesizeFormatted: format.filesize ?
                     (format.filesize / (1024 * 1024)).toFixed(2) + ' MB' : 'Unknown',
                 approxDurationMs: format.duration ? format.duration * 1000 : 0,
                 fps: format.fps,
@@ -80,7 +78,7 @@ async function getVideoInfo(videoUrl) {
 
 // Helper function to sanitize filename
 function sanitizeFilename(filename) {
-    return filename.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    return filename.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '_').substring(0, 200);
 }
 
 // 1. API to get video info and available formats
@@ -104,14 +102,8 @@ app.post('/api/video/info', async (req, res) => {
     }
 });
 
-// 2. API to download video in specific format
-
-// 2. API to download video in specific format
+// 2. API to download video in specific format - FIXED VERSION
 app.get('/api/video/download', async (req, res) => {
-    let downloadId;
-    let childProcess;
-    let progressInterval;
-
     try {
         const { videoUrl, itag, filename } = req.query;
 
@@ -119,18 +111,13 @@ app.get('/api/video/download', async (req, res) => {
             return res.status(400).json({ error: 'Video URL and format itag are required' });
         }
 
-        // Create download tracker
-        downloadId = Date.now().toString();
-        activeDownloads.set(downloadId, {
-            videoId: new URL(videoUrl).searchParams.get('v') || videoUrl.split('/').pop(),
-            startedAt: new Date(),
-            progress: 0,
-            status: 'starting'
-        });
+        if (!ytdl.validateURL(videoUrl)) {
+            return res.status(400).json({ error: 'Invalid YouTube URL' });
+        }
 
-        console.log(`Starting download ${downloadId} for URL: ${videoUrl}, format: ${itag}`);
+        console.log(`Starting download for URL: ${videoUrl}, format: ${itag}`);
 
-        // First, get video info to validate format
+        // Get video info to validate format and get title
         const videoInfo = await youtubedl(videoUrl, {
             dumpJson: true,
             noCheckCertificates: true,
@@ -145,9 +132,8 @@ app.get('/api/video/download', async (req, res) => {
         // Find the requested format
         const format = videoInfo.formats.find(f => f.format_id === itag.toString());
         if (!format) {
-            activeDownloads.delete(downloadId);
             console.error(`Format ${itag} not found for video ${videoInfo.id}`);
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Requested format not available',
                 availableFormats: videoInfo.formats.map(f => f.format_id)
             });
@@ -155,71 +141,66 @@ app.get('/api/video/download', async (req, res) => {
 
         console.log(`Found format: ${format.format_id}, extension: ${format.ext}`);
 
-        // Generate filename if not provided
+        // Generate filename
         let downloadFilename = filename || sanitizeFilename(videoInfo.title);
         const extension = format.ext || 'mp4';
-        if (!downloadFilename.endsWith(`.${extension}`)) {
+
+        // Ensure proper extension
+        if (!downloadFilename.toLowerCase().endsWith(`.${extension}`)) {
             downloadFilename += `.${extension}`;
         }
 
-        // Set headers for download
-        res.header('Content-Disposition', `attachment; filename="${downloadFilename}"`);
-        res.header('Content-Type', 'application/octet-stream');
+        // Clean filename for Content-Disposition header
+        const safeFilename = encodeURIComponent(downloadFilename).replace(/['"]/g, '');
 
-        // Update download tracker
-        activeDownloads.get(downloadId).title = videoInfo.title;
-        activeDownloads.get(downloadId).status = 'downloading';
-        activeDownloads.get(downloadId).totalSize = format.filesize;
-        activeDownloads.get(downloadId).format = format.format_id;
+        // Set proper headers for download
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`);
 
-        // Prepare yt-dlp command
-        const args = [
-            videoUrl,
-            '--format', itag,
-            '--no-check-certificates',
-            '--no-warnings',
-            '--output', '-',
-            '--add-header', 'referer:youtube.com',
-            '--add-header', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        ];
+        // Set appropriate content type
+        if (format.ext === 'mp4') {
+            res.setHeader('Content-Type', 'video/mp4');
+        } else if (format.ext === 'webm') {
+            res.setHeader('Content-Type', 'video/webm');
+        } else if (format.ext === 'mp3') {
+            res.setHeader('Content-Type', 'audio/mpeg');
+        } else if (format.ext === 'm4a') {
+            res.setHeader('Content-Type', 'audio/mp4');
+        } else {
+            res.setHeader('Content-Type', 'application/octet-stream');
+        }
 
-        // Add format sort preference for better compatibility
-        args.push('--format-sort', 'res,ext:mp4:m4a');
+        // If format has filesize, set Content-Length
+        if (format.filesize) {
+            res.setHeader('Content-Length', format.filesize);
+            console.log(`File size: ${(format.filesize / (1024 * 1024)).toFixed(2)} MB`);
+        }
 
-        console.log('Executing yt-dlp with args:', args);
-
-        // Execute yt-dlp
-        childProcess = youtubedl.raw(videoUrl, {
+        // Prepare yt-dlp command for streaming
+        const options = {
             format: itag,
             noCheckCertificates: true,
             noWarnings: true,
-            output: '-',
+            output: '-', // Output to stdout
             addHeader: [
                 'referer:youtube.com',
                 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             ],
             formatSort: 'res,ext:mp4:m4a',
-            verbose: true
-        });
+            verbose: true,
+            forceIpv4: true,
+            socketTimeout: 30000,
+            retries: 10,
+            fragmentRetries: 10,
+            skipUnavailableFragments: true
+        };
+
+        // Execute yt-dlp and stream directly to response
+        const childProcess = youtubedl.raw(videoUrl, options);
 
         let downloadedBytes = 0;
-        let lastProgressUpdate = Date.now();
+        const startTime = Date.now();
 
-        // Track progress
-        if (format.filesize) {
-            progressInterval = setInterval(() => {
-                if (activeDownloads.has(downloadId)) {
-                    const progress = format.filesize ? 
-                        (downloadedBytes / format.filesize) * 100 : 0;
-                    activeDownloads.get(downloadId).progress = Math.min(100, Math.round(progress));
-                    activeDownloads.get(downloadId).downloadedBytes = downloadedBytes;
-                    activeDownloads.get(downloadId).speed = 
-                        downloadedBytes / ((Date.now() - lastProgressUpdate) / 1000);
-                }
-            }, 1000);
-        }
-
-        // Pipe stdout to response
+        // Stream the output
         childProcess.stdout.on('data', (chunk) => {
             downloadedBytes += chunk.length;
             if (res.writable) {
@@ -228,81 +209,50 @@ app.get('/api/video/download', async (req, res) => {
         });
 
         childProcess.stdout.on('end', () => {
-            console.log(`Download ${downloadId} completed: ${downloadedBytes} bytes`);
-            clearInterval(progressInterval);
-            if (res.writable) {
-                res.end();
-            }
-            activeDownloads.delete(downloadId);
+            const endTime = Date.now();
+            const duration = (endTime - startTime) / 1000;
+            const speed = downloadedBytes / duration / (1024 * 1024); // MB/s
+            console.log(`Download completed: ${(downloadedBytes / (1024 * 1024)).toFixed(2)} MB in ${duration.toFixed(2)}s (${speed.toFixed(2)} MB/s)`);
+            res.end();
         });
 
-        // Handle stderr (yt-dlp logs)
         childProcess.stderr.on('data', (data) => {
             const message = data.toString().trim();
-            if (message && !message.includes('[download]')) {
+            if (message && message.includes('[download]')) {
+                console.log(`yt-dlp progress: ${message}`);
+            } else if (message) {
                 console.log(`yt-dlp: ${message}`);
-            }
-        });
-
-        // Handle process completion
-        childProcess.on('close', (code, signal) => {
-            console.log(`yt-dlp process closed: code=${code}, signal=${signal}`);
-            clearInterval(progressInterval);
-            activeDownloads.delete(downloadId);
-            
-            if (code !== 0 && !res.headersSent) {
-                res.status(500).json({ error: `Download failed with code ${code}` });
             }
         });
 
         childProcess.on('error', (error) => {
             console.error('yt-dlp process error:', error);
-            clearInterval(progressInterval);
-            activeDownloads.delete(downloadId);
             if (!res.headersSent) {
                 res.status(500).json({ error: 'Download process error: ' + error.message });
+            } else {
+                res.end();
+            }
+        });
+
+        childProcess.on('close', (code) => {
+            console.log(`yt-dlp process exited with code ${code}`);
+            if (code !== 0 && !res.headersSent) {
+                res.status(500).json({ error: `Download failed with exit code ${code}` });
             }
         });
 
         // Handle client disconnect
         req.on('close', () => {
-            console.log(`Client disconnected from download ${downloadId}`);
-            clearInterval(progressInterval);
-            
-            if (childProcess && !childProcess.killed) {
-                console.log(`Killing yt-dlp process for download ${downloadId}`);
-                childProcess.kill('SIGTERM');
-            }
-            
-            if (activeDownloads.has(downloadId)) {
-                activeDownloads.get(downloadId).status = 'cancelled';
-                setTimeout(() => activeDownloads.delete(downloadId), 5000);
-            }
-        });
-
-        // Handle request timeout
-        req.on('timeout', () => {
-            console.log(`Request timeout for download ${downloadId}`);
-            clearInterval(progressInterval);
-            if (childProcess && !childProcess.killed) {
+            console.log('Client disconnected, killing yt-dlp process');
+            if (!childProcess.killed) {
                 childProcess.kill('SIGTERM');
             }
         });
 
     } catch (error) {
-        console.error('Download setup error:', error);
-        clearInterval(progressInterval);
-        
-        if (downloadId && activeDownloads.has(downloadId)) {
-            activeDownloads.delete(downloadId);
-        }
-        
-        if (childProcess && !childProcess.killed) {
-            childProcess.kill('SIGTERM');
-        }
-        
+        console.error('Download error:', error);
         if (!res.headersSent) {
-            res.status(500).json({ 
+            res.status(500).json({
                 error: 'Download failed: ' + error.message,
                 details: error.stack
             });
@@ -378,7 +328,7 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Serve a simple frontend for testing
+// Serve an improved frontend for testing
 app.get('/', (req, res) => {
     const html = `
     <!DOCTYPE html>
@@ -388,7 +338,7 @@ app.get('/', (req, res) => {
         <style>
             body {
                 font-family: Arial, sans-serif;
-                max-width: 800px;
+                max-width: 1000px;
                 margin: 0 auto;
                 padding: 20px;
                 background-color: #f5f5f5;
@@ -402,81 +352,138 @@ app.get('/', (req, res) => {
             h1 {
                 color: #333;
                 text-align: center;
-            }
-            .endpoint {
-                background: #f8f9fa;
-                padding: 15px;
-                margin: 15px 0;
-                border-left: 4px solid #007bff;
-                border-radius: 5px;
-            }
-            .method {
-                display: inline-block;
-                padding: 5px 10px;
-                background: #007bff;
-                color: white;
-                border-radius: 3px;
-                font-weight: bold;
-                margin-right: 10px;
-            }
-            code {
-                background: #e9ecef;
-                padding: 2px 5px;
-                border-radius: 3px;
-                font-family: monospace;
+                margin-bottom: 30px;
             }
             .test-form {
-                margin: 20px 0;
-                padding: 20px;
+                margin: 30px 0;
+                padding: 25px;
                 background: #e8f4fd;
-                border-radius: 5px;
+                border-radius: 8px;
+                border: 1px solid #b3d9ff;
             }
-            input[type="text"] {
-                width: 70%;
-                padding: 10px;
+            .url-input {
+                width: 80%;
+                padding: 12px;
                 margin-right: 10px;
-                border: 1px solid #ddd;
+                border: 2px solid #007bff;
                 border-radius: 5px;
+                font-size: 16px;
             }
-            button {
-                padding: 10px 20px;
+            .btn {
+                padding: 12px 24px;
                 background: #28a745;
                 color: white;
                 border: none;
                 border-radius: 5px;
                 cursor: pointer;
+                font-size: 16px;
+                font-weight: bold;
+                transition: background 0.3s;
             }
-            button:hover {
+            .btn:hover {
                 background: #218838;
+            }
+            .btn-info {
+                background: #007bff;
+            }
+            .btn-info:hover {
+                background: #0056b3;
+            }
+            #results {
+                margin-top: 20px;
+                padding: 20px;
+                background: white;
+                border-radius: 5px;
+                border: 1px solid #ddd;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 15px;
+            }
+            th {
+                background: #007bff;
+                color: white;
+                padding: 12px;
+                text-align: left;
+            }
+            td {
+                padding: 10px;
+                border-bottom: 1px solid #ddd;
+            }
+            tr:hover {
+                background: #f5f5f5;
+            }
+            .download-btn {
+                padding: 8px 16px;
+                background: #28a745;
+                color: white;
+                text-decoration: none;
+                border-radius: 4px;
+                display: inline-block;
+            }
+            .download-btn:hover {
+                background: #218838;
+            }
+            .loading {
+                text-align: center;
+                padding: 20px;
+                color: #007bff;
+            }
+            .error {
+                color: #dc3545;
+                padding: 10px;
+                background: #f8d7da;
+                border-radius: 4px;
+                margin: 10px 0;
+            }
+            .success {
+                color: #28a745;
+                padding: 10px;
+                background: #d4edda;
+                border-radius: 4px;
+                margin: 10px 0;
             }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>YouTube Video Downloader API</h1>
-            <p>Test the API endpoints below:</p>
             
             <div class="test-form">
-                <h3>Test Video Info Endpoint</h3>
-                <input type="text" id="videoUrl" placeholder="Enter YouTube URL (e.g., https://www.youtube.com/watch?v=...)" />
-                <button onclick="getVideoInfo()">Get Formats</button>
+                <h2>Download YouTube Videos</h2>
+                <p>Enter a YouTube URL and click "Get Formats" to see available download options.</p>
+                
+                <div>
+                    <input type="text" 
+                           id="videoUrl" 
+                           class="url-input" 
+                           placeholder="Enter YouTube URL (e.g., https://www.youtube.com/watch?v=...)" 
+                           value="https://www.youtube.com/watch?v=dQw4w9WgXcQ" />
+                    <button onclick="getVideoInfo()" class="btn btn-info">Get Formats</button>
+                </div>
+                
                 <div id="results"></div>
             </div>
-            
-  
         </div>
         
         <script>
             async function getVideoInfo() {
-                const videoUrl = document.getElementById('videoUrl').value;
+                const videoUrl = document.getElementById('videoUrl').value.trim();
                 const resultsDiv = document.getElementById('results');
                 
                 if (!videoUrl) {
-                    resultsDiv.innerHTML = '<p style="color: red;">Please enter a YouTube URL</p>';
+                    resultsDiv.innerHTML = '<div class="error">Please enter a YouTube URL</div>';
                     return;
                 }
                 
-                resultsDiv.innerHTML = '<p>Loading...</p>';
+                // Simple URL validation
+                if (!videoUrl.includes('youtube.com/watch') && !videoUrl.includes('youtu.be/')) {
+                    resultsDiv.innerHTML = '<div class="error">Please enter a valid YouTube URL</div>';
+                    return;
+                }
+                
+                resultsDiv.innerHTML = '<div class="loading">Loading video information...</div>';
                 
                 try {
                     const response = await fetch('/api/video/info', {
@@ -491,41 +498,69 @@ app.get('/', (req, res) => {
                     
                     if (response.ok) {
                         let html = \`
-                            <h4>\${data.title}</h4>
-                            <p>Duration: \${Math.floor(data.duration / 60)}:\${(data.duration % 60).toString().padStart(2, '0')}</p>
-                            <img src="\${data.thumbnail}" width="200" />
+                            <div class="success">
+                                <h3>\${data.title}</h3>
+                                <p>Duration: \${Math.floor(data.duration / 60)}:\${(data.duration % 60).toString().padStart(2, '0')} | Author: \${data.author}</p>
+                                <img src="\${data.thumbnail}" width="320" style="border-radius: 5px; margin: 10px 0;" />
+                            </div>
                             <h4>Available Formats:</h4>
-                            <table border="1" cellpadding="8" style="width: 100%; border-collapse: collapse;">
+                            <table>
                                 <thead>
                                     <tr>
                                         <th>Quality</th>
                                         <th>Format</th>
-                                        <th>Codec</th>
+                                        <th>Size</th>
+                                        <th>Video/Audio</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>\`;
                         
                         data.formats.forEach(format => {
+                            // Create direct download link
                             const downloadUrl = \`/api/video/download?videoUrl=\${encodeURIComponent(videoUrl)}&itag=\${format.itag}\`;
+                            
+                            // Determine type icon
+                            let typeIcon = '📹';
+                            let typeText = 'Video+Audio';
+                            if (format.hasVideo && !format.hasAudio) {
+                                typeIcon = '🎞️';
+                                typeText = 'Video Only';
+                            } else if (!format.hasVideo && format.hasAudio) {
+                                typeIcon = '🎵';
+                                typeText = 'Audio Only';
+                            }
+                            
                             html += \`
                                 <tr>
-                                    <td>\${format.quality || 'N/A'}</td>
-                                    <td>\${format.container}</td>
-                                    <td>\${format.videoCodec || format.audioCodec || 'N/A'}</td>
-                                    <td><a href="\${downloadUrl}" target="_blank">Download</a></td>
+                                    <td><strong>\${format.quality || 'N/A'}</strong></td>
+                                    <td>\${format.container.toUpperCase()}</td>
+                                    <td>\${format.filesizeFormatted || 'Unknown'}</td>
+                                    <td>\${typeIcon} \${typeText}</td>
+                                    <td>
+                                        <a href="\${downloadUrl}" 
+                                           class="download-btn" 
+                                           download="\${data.title.replace(/[^a-z0-9]/gi, '_')}.\${format.container}">
+                                            Download
+                                        </a>
+                                    </td>
                                 </tr>\`;
                         });
                         
                         html += '</tbody></table>';
                         resultsDiv.innerHTML = html;
                     } else {
-                        resultsDiv.innerHTML = \`<p style="color: red;">Error: \${data.error}</p>\`;
+                        resultsDiv.innerHTML = \`<div class="error">Error: \${data.error}</div>\`;
                     }
                 } catch (error) {
-                    resultsDiv.innerHTML = \`<p style="color: red;">Error: \${error.message}</p>\`;
+                    resultsDiv.innerHTML = \`<div class="error">Error: \${error.message}</div>\`;
                 }
             }
+            
+            // Load example on page load
+            window.onload = function() {
+                getVideoInfo();
+            };
         </script>
     </body>
     </html>
@@ -548,4 +583,4 @@ app.listen(PORT, () => {
     console.log(`  POST   http://localhost:${PORT}/api/video/audio-formats`);
     console.log(`  GET    http://localhost:${PORT}/api/downloads/active`);
     console.log(`  GET    http://localhost:${PORT}/api/health`);
-});
+}); 
