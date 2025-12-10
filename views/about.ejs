@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 40px 20px;
+            color: white;
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .main-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin-top: 30px;
+        }
+        
+        .btn {
+            padding: 16px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        }
+        
+        .content-section {
+            margin-bottom: 40px;
+        }
+        
+        .content-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 2em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .content-section p {
+            line-height: 1.8;
+            color: #444;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        
+        .features-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .feature-item {
+            background: #f8f9ff;
+            padding: 25px;
+            border-radius: 15px;
+            border-left: 5px solid #667eea;
+        }
+        
+        .feature-item h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-left: 5px solid #f39c12;
+            padding: 25px;
+            border-radius: 10px;
+            margin: 30px 0;
+        }
+        
+        .warning-box h3 {
+            color: #d35400;
+            margin-bottom: 10px;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            opacity: 0.8;
+        }
+        
+        .actions {
+            text-align: center;
+            margin-top: 40px;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .main-card {
+                padding: 20px;
+            }
+            
+            .features-list {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>About YouTube Video Downloader</h1>
+            <p>Learn more about our tool and how to use it responsibly</p>
+        </div>
+        
+        <div class="main-card">
+            <div class="content-section">
+                <h2>About This Tool</h2>
+                <p>
+                    YouTube Video Downloader is a free, open-source tool that allows you to download videos 
+                    from YouTube in various formats and qualities. Our tool is designed to be fast, reliable, 
+                    and easy to use.
+                </p>
+                <p>
+                    This service runs entirely on your local machine - no data is sent to external servers 
+                    during the download process. All processing happens on your computer, ensuring your 
+                    privacy and security.
+                </p>
+            </div>
+            
+            <div class="content-section">
+                <h2>Key Features</h2>
+                <div class="features-list">
+                    <div class="feature-item">
+                        <h3>🎥 Multiple Formats</h3>
+                        <p>Download in MP4, WebM, 3GP, and other formats with various codec options.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>📊 Quality Options</h3>
+                        <p>Choose from multiple quality options including 144p, 360p, 720p, 1080p, and higher.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>⚡ Fast Downloads</h3>
+                        <p>Utilizes direct streaming for maximum download speed.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>🎵 Audio Extraction</h3>
+                        <p>Download audio-only formats for music and podcasts.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>🛡️ Safe & Secure</h3>
+                        <p>No malware, no viruses, and no user tracking.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>💯 Completely Free</h3>
+                        <p>No registration, no subscriptions, no hidden fees.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="warning-box">
+                <h3>⚠️ Important Legal Notice</h3>
+                <p>
+                    This tool is provided for educational purposes only. Users are responsible for complying 
+                    with YouTube's Terms of Service and all applicable copyright laws.
+                </p>
+                <p>
+                    <strong>Please note:</strong>
+                </p>
+                <ul style="margin-left: 20px; line-height: 1.8;">
+                    <li>Only download videos that you have permission to download</li>
+                    <li>Respect content creators' rights and copyrights</li>
+                    <li>Do not distribute downloaded content without permission</li>
+                    <li>This tool should be used for personal, non-commercial purposes only</li>
+                </ul>
+            </div>
+            
+            <div class="content-section">
+                <h2>How It Works</h2>
+                <p>
+                    1. Enter a YouTube URL in the homepage<br>
+                    2. Our system analyzes the video and extracts available formats<br>
+                    3. Select your preferred format and quality<br>
+                    4. Click download to save the video to your device<br>
+                </p>
+            </div>
+            
+            <div class="content-section">
+                <h2>Technical Information</h2>
+                <p>
+                    This application is built with Node.js, Express.js, and uses yt-dlp for video information 
+                    extraction. The download process uses direct streaming from YouTube's servers.
+                </p>
+                <p>
+                    The source code is available for review and modification. This ensures transparency 
+                    and allows users to verify that no malicious code is present.
+                </p>
+            </div>
+            
+            <div class="actions">
+                <a href="/" class="btn">
+                    <span>🏠</span> Back to Home
+                </a>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>© 2024 YouTube Video Downloader • Version 1.0.0</p>
+            <p style="font-size: 0.9em; margin-top: 5px;">
+                This tool is for educational purposes only. Use responsibly.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

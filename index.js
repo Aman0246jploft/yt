@@ -14,6 +14,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Set EJS as view engine
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+
+// Static files (if needed)
+app.use(express.static(path.join(__dirname, 'public')));
+
 // Store active downloads
 const activeDownloads = new Map();
 
@@ -86,7 +93,17 @@ function sanitizeFilename(filename) {
         .substring(0, 100);
 }
 
-// 1. API to get video info and available formats
+// 1. Render home page
+app.get('/', (req, res) => {
+    res.render('index', { 
+        title: 'YouTube Video Downloader',
+        videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        videoInfo: null,
+        error: null
+    });
+});
+
+// 2. API to get video info and available formats
 app.post('/api/video/info', async (req, res) => {
     try {
         const { videoUrl } = req.body;
@@ -107,7 +124,54 @@ app.post('/api/video/info', async (req, res) => {
     }
 });
 
-// 2. Direct download endpoint - SIMPLE AND RELIABLE
+// 3. API endpoint to process video info and render results page
+app.post('/process', async (req, res) => {
+    try {
+        const { videoUrl } = req.body;
+
+        if (!videoUrl) {
+            return res.render('index', {
+                title: 'YouTube Video Downloader',
+                videoUrl: videoUrl || '',
+                videoInfo: null,
+                error: 'Please enter a YouTube URL'
+            });
+        }
+
+        if (!ytdl.validateURL(videoUrl)) {
+            return res.render('index', {
+                title: 'YouTube Video Downloader',
+                videoUrl: videoUrl,
+                videoInfo: null,
+                error: 'Invalid YouTube URL. Please enter a valid YouTube URL.'
+            });
+        }
+
+        const videoInfo = await getVideoInfo(videoUrl);
+        
+        // Format duration for display
+        videoInfo.durationFormatted = `${Math.floor(videoInfo.duration / 60)}:${(videoInfo.duration % 60).toString().padStart(2, '0')}`;
+        
+        res.render('results', {
+            title: `${videoInfo.title} - Download Options`,
+            videoUrl: videoUrl,
+            videoInfo: videoInfo,
+            sanitizeFilename: sanitizeFilename,
+            error: null
+        });
+
+    } catch (error) {
+        console.error('Error processing video:', error);
+        res.render('index', {
+            title: 'YouTube Video Downloader',
+            videoUrl: req.body.videoUrl || '',
+            videoInfo: null,
+            error: `Error: ${error.message}`
+        });
+    }
+});
+
+// 4. Direct download endpoint - SIMPLE AND RELIABLE
 app.get("/api/video/download", async (req, res) => {
     try {
         let { url, filename, quality } = req.query;
@@ -255,7 +319,7 @@ app.get("/api/video/download", async (req, res) => {
     }
 });
 
-// 3. Alternative simple download using ytdl-core
+// 5. Alternative simple download using ytdl-core
 app.get("/api/video/simple-download", async (req, res) => {
     try {
         const { url, quality = 'highest' } = req.query;
@@ -302,7 +366,7 @@ app.get("/api/video/simple-download", async (req, res) => {
     }
 });
 
-// 4. Health check endpoint
+// 6. Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
@@ -311,396 +375,46 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Serve an improved frontend for testing
-app.get('/', (req, res) => {
-    const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>YouTube Video Downloader</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-            }
-            .container {
-                background: white;
-                padding: 40px;
-                border-radius: 20px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                margin-top: 30px;
-            }
-            h1 {
-                color: #333;
-                text-align: center;
-                margin-bottom: 40px;
-                font-size: 2.5em;
-            }
-            .test-form {
-                margin: 30px 0;
-                padding: 30px;
-                background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-                border-radius: 15px;
-                border: 2px solid #e0e6ff;
-            }
-            .url-input {
-                width: 70%;
-                padding: 15px;
-                margin-right: 15px;
-                border: 2px solid #667eea;
-                border-radius: 10px;
-                font-size: 16px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                transition: all 0.3s;
-            }
-            .url-input:focus {
-                outline: none;
-                border-color: #764ba2;
-                box-shadow: 0 4px 12px rgba(118, 75, 162, 0.3);
-            }
-            .btn {
-                padding: 15px 30px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                border: none;
-                border-radius: 10px;
-                cursor: pointer;
-                font-size: 16px;
-                font-weight: bold;
-                transition: all 0.3s;
-                margin: 5px;
-                box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-            }
-            .btn:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-            }
-            .btn-success {
-                background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
-                box-shadow: 0 4px 15px rgba(86, 171, 47, 0.4);
-            }
-            .btn-danger {
-                background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
-                box-shadow: 0 4px 15px rgba(255, 65, 108, 0.4);
-            }
-            #results {
-                margin-top: 30px;
-                padding: 25px;
-                background: white;
-                border-radius: 15px;
-                border: 2px solid #e0e6ff;
-                max-height: 600px;
-                overflow-y: auto;
-            }
-            table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 20px;
-            }
-            th {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                padding: 15px;
-                text-align: left;
-                position: sticky;
-                top: 0;
-            }
-            td {
-                padding: 12px;
-                border-bottom: 1px solid #e0e6ff;
-            }
-            tr:hover {
-                background: #f8f9ff;
-                transform: scale(1.01);
-                transition: transform 0.2s;
-            }
-            .download-btn {
-                padding: 10px 20px;
-                background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
-                color: white;
-                text-decoration: none;
-                border-radius: 8px;
-                display: inline-block;
-                font-weight: bold;
-                transition: all 0.3s;
-            }
-            .download-btn:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 4px 15px rgba(86, 171, 47, 0.4);
-            }
-            .loading {
-                text-align: center;
-                padding: 40px;
-                color: #667eea;
-                font-size: 18px;
-            }
-            .loading:after {
-                content: '...';
-                animation: dots 1.5s steps(4, end) infinite;
-            }
-            @keyframes dots {
-                0%, 20% { content: ''; }
-                40% { content: '.'; }
-                60% { content: '..'; }
-                80%, 100% { content: '...'; }
-            }
-            .error {
-                color: #ff416c;
-                padding: 15px;
-                background: #ffe6eb;
-                border-radius: 10px;
-                margin: 15px 0;
-                border-left: 5px solid #ff416c;
-            }
-            .success {
-                color: #56ab2f;
-                padding: 15px;
-                background: #f0ffe6;
-                border-radius: 10px;
-                margin: 15px 0;
-                border-left: 5px solid #56ab2f;
-            }
-            .video-info {
-                display: flex;
-                align-items: center;
-                gap: 20px;
-                margin: 20px 0;
-                padding: 20px;
-                background: #f8f9ff;
-                border-radius: 10px;
-            }
-            .video-thumbnail {
-                border-radius: 10px;
-                box-shadow: 0 8px 25px rgba(0,0,0,0.2);
-            }
-            .video-details {
-                flex: 1;
-            }
-            .quick-downloads {
-                margin: 25px 0;
-                text-align: center;
-                padding: 20px;
-                background: rgba(102, 126, 234, 0.1);
-                border-radius: 10px;
-            }
-            .quick-btn {
-                margin: 8px;
-            }
-            .format-badge {
-                display: inline-block;
-                padding: 4px 12px;
-                background: #e0e6ff;
-                border-radius: 20px;
-                font-size: 12px;
-                font-weight: bold;
-                color: #667eea;
-                margin-right: 8px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🎬 YouTube Video Downloader</h1>
-            
-            <div class="test-form">
-                <h2 style="color: #667eea;">Download Any YouTube Video</h2>
-                <p style="color: #666; margin-bottom: 25px;">Enter a YouTube URL below and click "Get Formats" to see all available download options.</p>
-                
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <input type="text" 
-                           id="videoUrl" 
-                           class="url-input" 
-                           placeholder="Enter YouTube URL (e.g., https://www.youtube.com/watch?v=...)" 
-                           value="https://www.youtube.com/watch?v=dQw4w9WgXcQ" />
-                    <button onclick="getVideoInfo()" class="btn">Get Formats</button>
-                </div>
-                
-                <div class="quick-downloads">
-                    <p style="font-weight: bold; margin-bottom: 15px;">Quick Downloads:</p>
-                    <button onclick="quickDownload('highest')" class="btn btn-success quick-btn">⬇️ Download Highest Quality</button>
-                    <button onclick="quickDownload('lowest')" class="btn quick-btn">⬇️ Download Lowest Quality</button>
-                    <button onclick="downloadAudio()" class="btn quick-btn">🎵 Download Audio Only</button>
-                </div>
-                
-                <div id="results"></div>
-            </div>
-        </div>
-        
-        <script>
-            let currentVideoInfo = null;
-            
-            async function getVideoInfo() {
-                const videoUrl = document.getElementById('videoUrl').value.trim();
-                const resultsDiv = document.getElementById('results');
-                
-                if (!videoUrl) {
-                    resultsDiv.innerHTML = '<div class="error">❌ Please enter a YouTube URL</div>';
-                    return;
-                }
-                
-                // Simple URL validation
-                if (!videoUrl.includes('youtube.com/watch') && !videoUrl.includes('youtu.be/')) {
-                    resultsDiv.innerHTML = '<div class="error">❌ Please enter a valid YouTube URL</div>';
-                    return;
-                }
-                
-                resultsDiv.innerHTML = '<div class="loading">Loading video information</div>';
-                
-                try {
-                    const response = await fetch('/api/video/info', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ videoUrl })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (response.ok) {
-                        currentVideoInfo = data;
-                        
-                        let html = \`
-                            <div class="video-info">
-                                <img src="\${data.thumbnail}" width="240" height="135" class="video-thumbnail" />
-                                <div class="video-details">
-                                    <h3 style="margin-top: 0;">\${data.title}</h3>
-                                    <p>⏱️ Duration: \${Math.floor(data.duration / 60)}:\${(data.duration % 60).toString().padStart(2, '0')}</p>
-                                    <p>👤 Author: \${data.author}</p>
-                                    <p>📊 Formats available: \${data.formats.length}</p>
-                                </div>
-                            </div>
-                            
-                            <h3>Available Download Formats:</h3>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Quality</th>
-                                        <th>Format</th>
-                                        <th>Size</th>
-                                        <th>Type</th>
-                                        <th>Download</th>
-                                    </tr>
-                                </thead>
-                                <tbody>\`;
-                        
-                        data.formats.forEach(format => {
-                            // Create direct download link
-                            const downloadUrl = \`/api/video/download?url=\${encodeURIComponent(videoUrl)}&quality=\${format.itag}\`;
-                            
-                            // Determine type
-                            let typeIcon = '🎬';
-                            let typeText = 'Video+Audio';
-                            if (format.hasVideo && !format.hasAudio) {
-                                typeIcon = '🎞️';
-                                typeText = 'Video Only';
-                            } else if (!format.hasVideo && format.hasAudio) {
-                                typeIcon = '🎵';
-                                typeText = 'Audio Only';
-                            }
-                            
-                            // Get codec info
-                            const videoCodec = format.videoCodec ? \`<span class="format-badge">\${format.videoCodec.split('.')[0]}</span>\` : '';
-                            const audioCodec = format.audioCodec ? \`<span class="format-badge">\${format.audioCodec.split('.')[0]}</span>\` : '';
-                            
-                            html += \`
-                                <tr>
-                                    <td><strong>\${format.quality || 'N/A'}</strong></td>
-                                    <td>\${format.container.toUpperCase()} \${videoCodec} \${audioCodec}</td>
-                                    <td>\${format.filesizeFormatted || 'Unknown'}</td>
-                                    <td>\${typeIcon} \${typeText}</td>
-                                    <td>
-                                        <a href="\${downloadUrl}" 
-                                           class="download-btn" 
-                                           download="\${data.title.replace(/[^a-z0-9]/gi, '_')}.\${format.container}">
-                                            ⬇️ Download
-                                        </a>
-                                    </td>
-                                </tr>\`;
-                        });
-                        
-                        html += '</tbody></table>';
-                        resultsDiv.innerHTML = html;
-                    } else {
-                        resultsDiv.innerHTML = \`<div class="error">❌ Error: \${data.error}</div>\`;
-                    }
-                } catch (error) {
-                    resultsDiv.innerHTML = \`<div class="error">❌ Error: \${error.message}</div>\`;
-                }
-            }
-            
-            function quickDownload(quality) {
-                const videoUrl = document.getElementById('videoUrl').value.trim();
-                if (!videoUrl) {
-                    alert('⚠️ Please enter a YouTube URL first');
-                    return;
-                }
-                
-                const downloadUrl = \`/api/video/simple-download?url=\${encodeURIComponent(videoUrl)}&quality=\${quality}\`;
-                window.open(downloadUrl, '_blank');
-            }
-            
-            function downloadAudio() {
-                const videoUrl = document.getElementById('videoUrl').value.trim();
-                if (!videoUrl) {
-                    alert('⚠️ Please enter a YouTube URL first');
-                    return;
-                }
-                
-                // Find an audio-only format
-                if (currentVideoInfo) {
-                    const audioFormat = currentVideoInfo.formats.find(f => !f.hasVideo && f.hasAudio);
-                    if (audioFormat) {
-                        const downloadUrl = \`/api/video/download?url=\${encodeURIComponent(videoUrl)}&quality=\${audioFormat.itag}\`;
-                        window.open(downloadUrl, '_blank');
-                    } else {
-                        alert('No audio-only format found. Try a regular download instead.');
-                    }
-                } else {
-                    alert('Please get video formats first by clicking "Get Formats"');
-                }
-            }
-            
-            // Auto-load example on page load
-            window.onload = function() {
-                getVideoInfo();
-            };
-            
-            // Allow pressing Enter in input field
-            document.getElementById('videoUrl').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    getVideoInfo();
-                }
-            });
-        </script>
-    </body>
-    </html>
-    `;
-    res.send(html);
+// 7. About page (optional)
+app.get('/about', (req, res) => {
+    res.render('about', {
+        title: 'About - YouTube Downloader'
+    });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    res.status(500).json({ error: 'Something went wrong!' });
+    res.status(500).render('error', {
+        title: 'Error',
+        message: 'Something went wrong!',
+        error: err
+    });
+});
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).render('error', {
+        title: 'Page Not Found',
+        message: 'The page you are looking for does not exist.',
+        error: null
+    });
 });
 
 // Start server
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on http://localhost:${PORT}`);
-    console.log('📋 API Endpoints:');
+    console.log('📋 Pages:');
+    console.log(`  GET    http://localhost:${PORT}/ (Home Page)`);
+    console.log(`  POST   http://localhost:${PORT}/process (Process Video)`);
+    console.log(`  GET    http://localhost:${PORT}/about (About Page)`);
+    console.log('\n📋 API Endpoints:');
     console.log(`  POST   http://localhost:${PORT}/api/video/info`);
     console.log(`  GET    http://localhost:${PORT}/api/video/download?url=URL&quality=ITAG`);
     console.log(`  GET    http://localhost:${PORT}/api/video/simple-download?url=URL&quality=highest`);
     console.log(`  GET    http://localhost:${PORT}/api/health`);
     console.log('\n💡 Usage:');
     console.log('1. Visit http://localhost:3000 in your browser');
-    console.log('2. Enter a YouTube URL');
-    console.log('3. Click "Get Formats" to see all available options');
-    console.log('4. Click the download button for your preferred format');
-    console.log('5. The file will download directly to your device!');
+    console.log('2. Enter a YouTube URL and click "Process Video"');
+    console.log('3. Select your preferred format and download');
 });
